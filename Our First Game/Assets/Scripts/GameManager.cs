@@ -1,11 +1,12 @@
 ﻿using JetBrains.Annotations;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Xml.Serialization;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-enum GameColor
+public enum GameColor
 {
     White, Black
 }
@@ -17,9 +18,17 @@ public class GameManager : MonoBehaviour
     public GameObject whitePiecePrefab;
     public GameObject blackPiecePrefab;
 
-    public Piece[,] pieces = new Piece[8, 8];
+    public Piece[,] board = new Piece[8, 8];
     private Piece selectedPiece;
     private Vector2 mouseOver;
+    private Vector2 startDrag;
+    private Vector2 endDrag;
+
+    private int Floor(float x)
+    {
+        return (int)Mathf.Floor(x);
+    }
+
     // Start is called before the first frame update
     void Start()
     {
@@ -30,10 +39,57 @@ public class GameManager : MonoBehaviour
     private void Update()
     {
         UpdateMouseOver();
+        //Debug.Log(mouseOver);
+        int x = Floor(mouseOver.x), y = Floor(mouseOver.y);
+
         if (Input.GetMouseButtonDown(0))
-            SelectPiece((int)mouseOver.x, (int)mouseOver.y);
+            SelectPiece(x, y);
+        if (Input.GetMouseButtonUp(0))
+            TryMove(Floor(startDrag.x), Floor(startDrag.y), x, y);
         if (selectedPiece != null)
             UpdatePieceDrag(selectedPiece);
+    }
+
+    void TryMove(int x1, int y1, int x2, int y2)
+    {
+        //MULTIPLAYER ONLY
+        startDrag = new Vector2(x1, y1);
+        endDrag = new Vector2(x2, y2);
+        selectedPiece = board[x1, y1];
+
+        if (!PointIsLegal(x2, y2))
+        {
+            if (selectedPiece != null)
+                MovePiece(selectedPiece, x1, y1);
+            startDrag = Vector2.zero;
+            selectedPiece = null;
+            return;
+        }
+
+        if (selectedPiece != null)
+        {
+            if (endDrag == startDrag)
+            {
+                MovePiece(selectedPiece, x1, y1);
+                startDrag = Vector2.zero;
+                selectedPiece = null;
+                return;
+            }
+
+            bool isValidMove = selectedPiece.IsValidMove(board, x1, y1, x2, y2);
+            Debug.Log("Move is valid?: " + isValidMove);
+            if (isValidMove)
+            {
+                MovePiece(selectedPiece, x2, y2);
+                board[x2, y2] = selectedPiece;
+                board[x1, y1] = null;
+            }
+            else
+                MovePiece(selectedPiece, x1, y1);
+            startDrag = Vector2.zero;
+            selectedPiece = null;
+            return;
+        }
     }
 
     void UpdateMouseOver()
@@ -59,7 +115,6 @@ public class GameManager : MonoBehaviour
             out hit,
             25.0f))
         {
-            Debug.Log(hit.point);
             p.transform.position = hit.point + new Vector3(0, 1 - hit.point.y, 0);
         }
     }
@@ -99,7 +154,9 @@ public class GameManager : MonoBehaviour
         GameObject go = Instantiate<GameObject>(gameColor == GameColor.White ? whitePiecePrefab : blackPiecePrefab,
             transform);
         Piece p = go.GetComponent<Piece>();
-        pieces[x, y] = p;
+        p.isKing = false;
+        p.color = gameColor;
+        board[x, y] = p;
         MovePiece(p, x, y);
     }
 
@@ -111,7 +168,7 @@ public class GameManager : MonoBehaviour
 
     bool PointIsLegal(float x, float y)
     {
-        return 0 <= x && x < pieces.Length && 0 <= y && y < pieces.Length;
+        return 0 <= x && x < board.Length && 0 <= y && y < board.Length;
     }
 
     void SelectPiece(int x, int y)
@@ -121,10 +178,10 @@ public class GameManager : MonoBehaviour
             Debug.LogError("ILLEGAL POINT: (" + x + ", " + y + ")");
             return;
         }
-        selectedPiece = pieces[x, y];
-        if (selectedPiece == null)
+        Piece p = board[x, y];
+        if (p == null)
             return;
-
-        Debug.Log(selectedPiece.name);
+        selectedPiece = p;
+        startDrag = mouseOver;
     }
 }
